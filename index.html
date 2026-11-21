@@ -64,6 +64,7 @@ h2{font-size:22px;font-weight:800;margin:24px 0 8px;line-height:1.25}
 .tabs{display:flex;gap:8px;overflow-x:auto;margin:16px 0 0;padding-bottom:4px}
 .tab{flex:none;background:var(--card);border:2px solid var(--line);border-radius:99px;padding:6px 16px;font-weight:800}
 .tab.on{background:var(--pri);border-color:var(--pri);color:var(--on)}
+.tab.link{font:inherit;color:inherit;text-decoration:none;display:inline-block;text-align:center}
 .at{margin:18px 0 10px}
 .nm{width:100%;font:inherit;font-weight:700;background:var(--card);color:var(--ink);border:2px solid var(--line);border-radius:12px;padding:10px 14px;margin-bottom:6px}
 .share{display:block;text-align:center;text-decoration:none;margin-top:18px}
@@ -1584,7 +1585,7 @@ C('Read: which phone is lighter?','Phone A costs $300. Phone B costs $800. Phone
 C('Read: why do many students buy Phone A?','Phone A costs $300. Phone B costs $800. Phone B is more expensive than Phone A, but it is more powerful and the camera is better. Phone A is smaller and lighter. It is also less expensive, so many students buy it.',['It is less expensive.','It is more powerful.','It is bigger.'],'It is less expensive.'),
 C('Read: choose the correct sentence.','Phone A costs $300. Phone B costs $800. Phone B is more expensive than Phone A, but it is more powerful and the camera is better. Phone A is smaller and lighter. It is also less expensive, so many students buy it.',['Phone A is smaller than Phone B.','Phone A is more powerful than Phone B.','Phone B is cheaper than Phone A.'],'Phone A is smaller than Phone B.')]}
 ]},
-{n:'R5',nm:'Review 5',t:'Review 5: Lessons 17 a 20',L:[
+{n:'R5',nm:'Review 5',t:'Review 5: Lessons 17 a 20',href:'https://jessyaprofe.github.io/miss-lima-english/',L:[
 {id:1,t:'Review 5: Lessons 17 a 20',s:'can / can’t, adverbs, shopping, technology, comparatives',q:[
 C('Complete the answer','Can she swim? — No, she ___.',['can’t','can','doesn’t'],'can’t'),
 C('Complete the sentence','I can cook ___. (good)',['well','good','goodly'],'well'),
@@ -2759,7 +2760,7 @@ function home(){
   const cj=[['I','am'],['you','are'],['he / she / it','is'],['we / you / they','are']];
   app.innerHTML=`<div class="hero"><img src="${IMG}" alt="Teacher Jessy" width="120" height="120"><div><small>English with</small><h1>Teacher Jessy</h1><small>Level: A1</small></div></div>
   <div class="stats"><span class="chip">🔥 ${S.streak}</span><span class="chip">⭐ ${S.xp}</span></div>
-  <div class="tabs" role="tablist">${AULAS.map((a,i)=>`<button role="tab" aria-selected="${i===cur}" class="tab ${i===cur?'on':''}" ${aulaOpen(i)?'':'disabled'} onclick="tab(${i})">${aulaOpen(i)?'':'🔒 '}${a.nm||'Lesson '+a.n}</button>`).join('')}</div>
+  <div class="tabs" role="tablist">${AULAS.map((a,i)=>a.href?`<a role="tab" aria-selected="false" class="tab link" href="${a.href}" target="_blank" rel="noopener">${a.nm||'Lesson '+a.n} ↗</a>`:`<button role="tab" aria-selected="${i===cur}" class="tab ${i===cur?'on':''}" ${aulaOpen(i)?'':'disabled'} onclick="tab(${i})">${aulaOpen(i)?'':'🔒 '}${a.nm||'Lesson '+a.n}</button>`).join('')}</div>
   <h2 class="at">${AULAS[cur].t}</h2>
   ${AULAS[cur].n===5?`<div class="cheat">${cj.map(c=>`<div>${c[0]} <b>${c[1]}</b></div>`).join('')}</div>`:''}
   ${AULAS[cur].n===7?`<div class="cheat">${[['I / you / we / they','+ verb'],['he / she / it','+ verb + s'],['don’t / doesn’t','+ verb'],['Do / Does','+ subject + verb?']].map(c=>`<div>${c[0]} <b>${c[1]}</b></div>`).join('')}</div>`:''}
@@ -2798,10 +2799,11 @@ const FB=['Great job!','Well done!','Perfect!','Awesome!','Nice work!','Excellen
 const canSpeak=typeof speechSynthesis!=='undefined'&&typeof SpeechSynthesisUtterance!=='undefined';
 function say(t,slow){if(!canSpeak)return;try{const u=new SpeechSynthesisUtterance(t);u.lang='en-US';u.rate=slow?0.6:0.9;const v=speechSynthesis.getVoices().find(x=>/^en/i.test(x.lang));if(v)u.voice=v;speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}}
 const doneL=(a,l)=>!!S.done[a.n+'.'+l.id];
-const aulaOpen=i=>i===0||AULAS[i-1].L.every(l=>doneL(AULAS[i-1],l));
+const prevAula=i=>{let j=i-1;while(j>=0&&AULAS[j].href)j--;return j<0?null:AULAS[j]};
+const aulaOpen=i=>{const p=prevAula(i);return i===0||!p||p.L.every(l=>doneL(p,l))};
 const lessonOpen=i=>aulaOpen(cur)&&(i===0||doneL(AULAS[cur],L[i-1]));
 function unlockMsg(){if(!run||!run.new)return '';const i=L.indexOf(run.l);if(i<L.length-1)return '<p>🔓 Próxima lição liberada!</p>';const ni=cur+1;return ni<AULAS.length&&aulaOpen(ni)?`<p>🔓 ${AULAS[ni].nm||'Lesson '+AULAS[ni].n} liberada!</p>`:''}
-function tab(i){if(!aulaOpen(i))return;cur=i;L=AULAS[i].L;home()}
+function tab(i){const a=AULAS[i];if(a.href){window.open(a.href,'_blank','noopener');return}if(!aulaOpen(i))return;cur=i;L=AULAS[i].L;home()}
 function copyMsg(){const b=document.getElementById('cp');const d=t=>{b.textContent=t};try{navigator.clipboard.writeText(MSG).then(()=>d('Copiado!'),()=>d('Não foi possível copiar'))}catch(e){d('Não foi possível copiar')}}
 function start(i){
   if(!lessonOpen(i))return;
@@ -2956,7 +2958,7 @@ function prog(){
   <p id="rm" class="lead"></p>`;
   document.querySelector('.foot')?.remove();
 }
-{let k=0;AULAS.forEach((a,i)=>{if(aulaOpen(i))k=i});cur=k;L=AULAS[k].L}
+{let k=0;AULAS.forEach((a,i)=>{if(aulaOpen(i)&&!a.href)k=i});cur=k;L=AULAS[k].L}
 home();
 (async()=>{try{
   if(typeof claude==='undefined'||!claude.use)return;
