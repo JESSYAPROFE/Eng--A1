@@ -87,6 +87,7 @@ h2{font-size:22px;font-weight:800;margin:24px 0 8px;line-height:1.25}
 .row small{display:block;color:var(--mute);font-weight:600;font-size:14px}
 .ok2{color:var(--ok);font-weight:900;white-space:nowrap}
 .code{width:100%;min-height:72px;font:13px/1.3 ui-monospace,monospace;background:var(--card);color:var(--ink);border:2px solid var(--line);border-radius:12px;padding:8px;margin-top:8px}
+.input{width:100%;font:inherit;background:var(--card);color:var(--ink);border:2px solid var(--line);border-radius:12px;padding:12px;margin-top:8px}
 .msgbox{background:var(--card);border:2px solid var(--line);border-radius:14px;padding:12px 14px;font-size:16px;text-align:left;margin-top:16px}
 @media (prefers-reduced-motion:no-preference){.foot.ok,.foot.bad{animation:up .25s ease-out}@keyframes up{from{transform:translateY(100%)}}}
 </style>
@@ -2746,12 +2747,17 @@ T('Which sentence is correct?',['He isn’t going to buy a car.','He doesn’t g
 let cur=0,L=AULAS[0].L,MSG='';
 const key=l=>AULAS[cur].n+'.'+l.id;
 const PHONE='';
+/* ===== Progresso online (Firebase Firestore) =====
+   Preencha apiKey e projectId com os dados do seu projeto Firebase.
+   Enquanto ficarem vazios, o app funciona apenas no navegador do aluno. */
+const TURMAS=['JESSY-A1-2026'];
+const TEACHER_PASS='jessy2026';
+const FIREBASE={apiKey:'',projectId:''};
 function load(){try{return JSON.parse(localStorage.getItem('tobeA1'))||{xp:0,done:{},streak:0,last:''}}catch(e){return {xp:0,done:{},streak:0,last:''}}}
-let storeOK=true,remote=null,rt,scr='home',pub=null,isT=false,PID='',DB=null,U=null,DL=null;
+let storeOK=true,rt,scr='home';
 function save(){S.t=Date.now();try{localStorage.setItem('tobeA1',JSON.stringify(S));storeOK=localStorage.getItem('tobeA1')!==null}catch(e){storeOK=false}
-  clearTimeout(rt);rt=setTimeout(()=>{try{if(remote)remote.set(JSON.parse(JSON.stringify(S))).catch(()=>{});if(pub)pub.set(pubData()).catch(()=>{})}catch(e){}},1500)}
-function pubData(){const e=Object.entries(S.err||{}).sort((a,b)=>b[1].n-a[1].n).slice(0,40);return JSON.parse(JSON.stringify({uid:PID,xp:S.xp,streak:S.streak,last:S.last,t:S.t,done:S.done,hist:S.hist,err:Object.fromEntries(e)}))}
-let S=Object.assign({xp:0,done:{},hist:{},streak:0,last:'',name:'',t:0},load()),run=null;
+  clearTimeout(rt);rt=setTimeout(()=>{try{pushProgress()}catch(e){}},1500)}
+let S=Object.assign({xp:0,done:{},hist:{},streak:0,last:'',name:'',turma:'',t:0},load()),run=null;
 try{localStorage.setItem('_t','1');storeOK=localStorage.getItem('_t')==='1'}catch(e){storeOK=false}
 const app=document.getElementById('app');
 
@@ -2791,7 +2797,8 @@ function home(){
   ${AULAS[cur].n===29?`<div class="cheat">${[['win → won','build → built'],['invent → invented','explore → explored'],['write → wrote','fight → fought'],['compose → composed','discover → discovered'],['When did…?','When did Eiffel build it?'],['What / Where / Why did…?','What did Cervantes write?'],['was / were','When was Napoleon born?'],['did + base verb','Did + subject + base verb']].map(c=>`<div>${c[0]} <b>${c[1]}</b></div>`).join('')}</div>`:''}
   ${AULAS[cur].n===16?`<div style="margin:12px 0 4px;text-align:center">${TREE([],1)}<p class="hint" style="margin:6px 0 0;font-size:14px">Family tree: “Me” = você</p></div>`:''}
   ${storeOK?'':'<p class="warn">⚠ Este navegador não está guardando o progresso. Use o backup em “Ver meu progresso”.</p>'}<p class="lead">Escolha uma lição. Pratique um pouco todo dia para manter a sequência.</p>
-  <button class="alt" onclick="prog()">Ver meu progresso</button>${isT?'<button class="alt" onclick="dash()">Painel do professor</button>':''}
+  <button class="alt" onclick="prog()">Ver meu progresso</button>
+  <p style="text-align:center;margin:10px 0 0"><a href="#" style="color:var(--mute);font-size:14px" onclick="dash();return false">Área do professor</a></p>
   ${L.map((l,i)=>{const lk=!lessonOpen(i);return `<button class="lesson ${lk?'locked':S.done[key(l)]?'done':''}" ${lk?'disabled':''} onclick="start(${i})"><span class="badge">${lk?'🔒':S.done[key(l)]?'✓':i+1}</span><span><b>${l.t}</b><small>${lk?'Conclua a lição anterior para liberar':l.s}</small></span><span class="go">${lk?'':S.done[key(l)]?'Refazer':'Começar'}</span></button>`}).join('')}`;
   document.querySelector('.foot')?.remove();
 }
@@ -2912,33 +2919,122 @@ function restore(){const m=document.getElementById('rm');try{const o=JSON.parse(
 const esc=x=>String(x==null?'':x).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const dmy=d=>d?String(d).split('-').reverse().join('/'):'-';
 const LN=k=>{const [n,id]=k.split('.');const a=AULAS.find(x=>String(x.n)===n);const l=a&&a.L.find(x=>String(x.id)===id);return a?(a.nm||'Lesson '+a.n)+(l?' - '+l.t:''):k};
-const OK=new Set(AULAS.flatMap(a=>a.L.map(l=>a.n+'.'+l.id)));
+const OK=new Set(AULAS.filter(a=>!a.href).flatMap(a=>a.L.map(l=>a.n+'.'+l.id)));
+const TOTAL=OK.size;
+
+/* ---------- Sincronização com o Firestore (REST, sem SDK) ---------- */
+const FS_ON=()=>!!(FIREBASE.apiKey&&FIREBASE.projectId);
+const fsBase=()=>`https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents`;
+const fsKey=()=>`key=${encodeURIComponent(FIREBASE.apiKey)}`;
+let sid=localStorage.getItem('tobeA1_sid')||'';
+const newSid=()=>'s'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+function studentFields(){
+  return{
+    turma:{stringValue:S.turma||''},
+    name:{stringValue:S.name||''},
+    xp:{integerValue:String(Math.round(S.xp||0))},
+    streak:{integerValue:String(Math.round(S.streak||0))},
+    nd:{integerValue:String(Object.keys(S.done||{}).length)},
+    last:{stringValue:S.last||''},
+    t:{integerValue:String(S.t||0)},
+    data:{stringValue:JSON.stringify({done:S.done||{},hist:S.hist||{},err:S.err||{}})}
+  };
+}
+function readStudent(d){
+  const f=d.fields||{};
+  const str=k=>f[k]&&f[k].stringValue!=null?f[k].stringValue:'';
+  const num=k=>f[k]?Number(f[k].integerValue||0):0;
+  let data={};try{data=JSON.parse(str('data')||'{}')}catch(e){}
+  return{id:String(d.name||'').split('/').pop(),turma:str('turma'),name:str('name'),xp:num('xp'),streak:num('streak'),nd:num('nd'),last:str('last'),t:num('t'),done:data.done||{},hist:data.hist||{},err:data.err||{}};
+}
+async function pushProgress(){
+  if(!FS_ON()||!sid||!S.name)return;
+  await fetch(`${fsBase()}/students/${sid}?${fsKey()}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({fields:studentFields()})});
+}
+async function pullProgress(){
+  if(!FS_ON()||!sid)return null;
+  const r=await fetch(`${fsBase()}/students/${sid}?${fsKey()}`);
+  if(!r.ok)return null;
+  return readStudent(await r.json());
+}
+async function listStudents(){
+  const out=[];let tok='';
+  for(let i=0;i<20;i++){
+    const u=`${fsBase()}/students?${fsKey()}&pageSize=300`+(tok?`&pageToken=${encodeURIComponent(tok)}`:'');
+    const r=await fetch(u);
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const j=await r.json();
+    (j.documents||[]).forEach(d=>out.push(readStudent(d)));
+    tok=j.nextPageToken||'';
+    if(!tok)break;
+  }
+  return out;
+}
+function ident(){
+  run=null;scr='ident';
+  const t=new URLSearchParams(location.search).get('turma')||localStorage.getItem('tobeA1_turma')||TURMAS[0];
+  app.innerHTML=`<div class="hero"><img src="${IMG}" alt="Teacher Jessy" width="120" height="120"><div><small>English with</small><h1>Teacher Jessy</h1><small>Level: A1</small></div></div>
+  <h2>Quem está estudando?</h2>
+  <p class="lead">Digite seu nome e o código da turma.</p>
+  <input id="nm" class="input" placeholder="Seu nome" autocomplete="name" value="${esc(S.name||'')}">
+  <input id="tr" class="input" placeholder="Código da turma" autocapitalize="characters" value="${esc(t)}">
+  <button class="cta" onclick="startIdent()">Começar</button>
+  <p id="ie" class="warn" hidden></p>`;
+}
+function startIdent(){
+  const nm=(document.getElementById('nm').value||'').trim();
+  const tr=(document.getElementById('tr').value||'').trim().toUpperCase();
+  const e=document.getElementById('ie');
+  const bad=m=>{e.textContent=m;e.hidden=false};
+  if(nm.length<2)return bad('Digite seu nome.');
+  if(!TURMAS.includes(tr))return bad('Código da turma não encontrado. Confira com a professora.');
+  S.name=nm;S.turma=tr;
+  if(!sid){sid=newSid();localStorage.setItem('tobeA1_sid',sid)}
+  localStorage.setItem('tobeA1_turma',tr);
+  save();home();
+}
+function tpass(){
+  run=null;scr='dash';
+  app.innerHTML=`<div class="bar"><button class="x" onclick="home()" aria-label="Voltar">✕</button><h1>Painel do professor</h1></div>
+  <p class="lead">Digite a senha do professor.</p>
+  <input id="pw" class="input" type="password" autocomplete="current-password">
+  <button class="cta" onclick="tcheck()">Entrar</button>
+  <p id="pe" class="warn" hidden></p>`;
+}
+function tcheck(){
+  const e=document.getElementById('pe');
+  if(document.getElementById('pw').value!==TEACHER_PASS){e.textContent='Senha incorreta.';e.hidden=false;return}
+  sessionStorage.setItem('tbpw','1');dash();
+}
 let ST=[];
 async function dash(){
   run=null;scr='dash';document.querySelector('.foot')?.remove();
   const bar='<div class="bar"><button class="x" onclick="home()" aria-label="Voltar">\u2715</button><h1>Painel do professor</h1></div>';
+  if(!FS_ON()){app.innerHTML=bar+'<p class="warn">A sincronização ainda não foi configurada.</p><p class="lead">Preencha <b>apiKey</b> e <b>projectId</b> do Firebase no início do arquivo para ver o progresso dos alunos.</p>';return}
+  if(sessionStorage.getItem('tbpw')!=='1'){tpass();return}
   app.innerHTML=bar+'<p class="lead">Carregando...</p>';
   try{
-    const snap=await DB.collection('students').get();
-    const raw=snap.docs.map(d=>d.data());
-    const ps=raw.length?await U.profiles(raw.map(r=>r.uid)):{};
-    ST=raw.map(r=>{const p=ps[r.uid]||{};return {...r,nm:p.name||'Aluno '+String(r.uid).slice(0,4),em:p.email||'',nd:Object.keys(r.done||{}).filter(k=>OK.has(k)).length}}).sort((a,b)=>(b.t||0)-(a.t||0));
-  }catch(e){app.innerHTML=bar+'<p class="warn">Nao foi possivel carregar os alunos agora. Tente de novo.</p>';return}
+    const raw=await listStudents();
+    ST=raw.map(r=>({...r,nm:r.name||'Aluno',nd:Object.keys(r.done||{}).filter(k=>OK.has(k)).length})).sort((a,b)=>(b.t||0)-(a.t||0));
+  }catch(e){app.innerHTML=bar+'<p class="warn">Não foi possível carregar os alunos agora. Verifique a conexão e tente de novo.</p>';return}
   const er={};ST.forEach(s=>Object.entries(s.err||{}).forEach(([k,v])=>{const o=er[k]||(er[k]={...v,n:0,s:0});o.n+=v.n;o.s++}));
   const top=Object.values(er).sort((a,b)=>b.n-a.n).slice(0,10);
   app.innerHTML=bar+`<p class="lead">${ST.length} ${ST.length===1?'aluno':'alunos'} com progresso salvo</p>
-  ${ST.map(s=>`<details class="row" style="display:block"><summary style="cursor:pointer"><b>${esc(s.nm)}</b> <small>${esc(s.em)}</small><br><small>${s.nd} de ${TOTAL} licoes - ${s.xp||0} XP - sequencia ${s.streak||0} - ultima atividade ${dmy(s.last)}</small></summary>
-  ${Object.entries(s.hist||{}).filter(([k])=>OK.has(k)).map(([k,h])=>`<p class="hint" style="margin:6px 0">${esc(LN(k))}: ${h.best}/${h.total} de primeira - ${h.tries} ${h.tries===1?'tentativa':'tentativas'} - ${dmy(h.last)}</p>`).join('')||'<p class="hint">Nenhuma licao feita ainda.</p>'}</details>`).join('')||'<p class="lead">Nenhum aluno abriu o app ainda.</p>'}
+  ${ST.map(s=>`<details class="row" style="display:block"><summary style="cursor:pointer"><b>${esc(s.nm)}</b> <small>${esc(s.turma||'')}</small><br><small>${s.nd} de ${TOTAL} lições · ${s.xp||0} XP · sequência ${s.streak||0} · última atividade ${dmy(s.last)}</small></summary>
+  ${Object.entries(s.hist||{}).filter(([k])=>OK.has(k)).map(([k,h])=>`<p class="hint" style="margin:6px 0">${esc(LN(k))}: ${h.best}/${h.total} de primeira - ${h.tries} ${h.tries===1?'tentativa':'tentativas'} - ${dmy(h.last)}</p>`).join('')||'<p class="hint">Nenhuma lição feita ainda.</p>'}</details>`).join('')||'<p class="lead">Nenhum aluno abriu o app ainda.</p>'}
   <h2>Perguntas que mais erram</h2>
   ${top.map(o=>`<div class="row" style="display:block"><b>${esc(o.p)}</b><br><small>Resposta: ${esc(o.a)} - ${esc(LN(o.l))} - ${o.n} ${o.n===1?'erro':'erros'} (${o.s} ${o.s===1?'aluno':'alunos'})</small></div>`).join('')||'<p class="lead">Sem erros registrados ainda.</p>'}
-  ${DL?'<button class="alt" onclick="csv()">Baixar CSV</button>':''}
+  ${ST.length?'<button class="alt" onclick="csv()">Baixar CSV</button>':''}
+  <button class="alt" onclick="dash()">Atualizar</button>
   <p id="dm" class="lead"></p>`;
 }
 function csv(){
   const q=x=>'"'+String(x==null?'':x).replace(/"/g,'""')+'"';
-  const rows=[['aluno','email','xp','sequencia','licao','tentativas','acertos_primeira','total','ultima']];
-  ST.forEach(s=>{const hs=Object.entries(s.hist||{}).filter(([k])=>OK.has(k));if(!hs.length)rows.push([s.nm,s.em,s.xp||0,s.streak||0,'','','','','']);hs.forEach(([k,h])=>rows.push([s.nm,s.em,s.xp||0,s.streak||0,LN(k),h.tries,h.best,h.total,h.last]))});
-  DL.save({filename:'progresso-alunos.csv',data:'\ufeff'+rows.map(r=>r.map(q).join(';')).join('\n')}).catch(()=>{const m=document.getElementById('dm');if(m)m.textContent='Download nao concluido.'});
+  const rows=[['aluno','turma','xp','sequencia','licao','tentativas','acertos_primeira','total','ultima']];
+  ST.forEach(s=>{const hs=Object.entries(s.hist||{}).filter(([k])=>OK.has(k));if(!hs.length)rows.push([s.nm,s.turma,s.xp||0,s.streak||0,'','','','','']);hs.forEach(([k,h])=>rows.push([s.nm,s.turma,s.xp||0,s.streak||0,LN(k),h.tries,h.best,h.total,h.last]))});
+  const blob=new Blob(['\ufeff'+rows.map(r=>r.map(q).join(';')).join('\r\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='progresso-alunos.csv';document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),2000);
 }
 function prog(){
   run=null;scr='prog';
@@ -2958,25 +3054,26 @@ function prog(){
   <p id="rm" class="lead"></p>`;
   document.querySelector('.foot')?.remove();
 }
-{let k=0;AULAS.forEach((a,i)=>{if(aulaOpen(i)&&!a.href)k=i});cur=k;L=AULAS[k].L}
-home();
-(async()=>{try{
-  if(typeof claude==='undefined'||!claude.use)return;
-  const [db,u]=await Promise.all([claude.use('db'),claude.use('user')]);
-  if(!db||!u)return;
-  const id=await u.id();
-  if(!id)return;
-  const ref=db.collection('data/users/'+id).doc('progress');
-  const snap=await ref.get();
-  const r=snap.exists?snap.data():null;
-  if(r&&(r.t||0)>(S.t||0)){S=Object.assign({xp:0,done:{},hist:{},streak:0,last:'',name:'',t:0},JSON.parse(JSON.stringify(r)));try{localStorage.setItem('tobeA1',JSON.stringify(S))}catch(e){}}
-  remote=ref;DB=db;U=u;
-  try{isT=!!(await u.isOwner())||!!(await u.canEdit())}catch(e){}
-  try{DL=await claude.use('downloads')}catch(e){}
-  if(!isT){PID=id;pub=db.collection('students').doc(id)}
-  if(!run){scr==='prog'?prog():home()}
-  if(pub||!r||(r.t||0)<(S.t||0))save();
-}catch(e){}})();
+function refreshCur(){let k=0;AULAS.forEach((a,i)=>{if(aulaOpen(i)&&!a.href)k=i});cur=k;L=AULAS[k].L}
+refreshCur();
+if(FS_ON()&&!S.name)ident();else home();
+(async()=>{
+  if(!FS_ON())return;
+  if(!sid){sid=newSid();localStorage.setItem('tobeA1_sid',sid)}
+  let adopted=false;
+  try{
+    const r=await pullProgress();
+    if(r&&(r.t||0)>(S.t||0)){
+      S=Object.assign(S,{xp:r.xp,done:r.done,hist:r.hist,err:r.err,streak:r.streak,last:r.last,t:r.t});
+      if(!S.name&&r.name)S.name=r.name;
+      if(!S.turma&&r.turma)S.turma=r.turma;
+      try{localStorage.setItem('tobeA1',JSON.stringify(S))}catch(e){}
+      adopted=true;
+    }
+  }catch(e){}
+  if(adopted){refreshCur();S.name?home():ident()}
+  else if(!S.name)ident();
+})();
 </script>
 </body>
 </html>
